@@ -144,12 +144,23 @@ export default async function handler(req, res) {
     // Generate HTML content
     const html = await generateCardHTML(cardDesign, guest, event, eventAttributes || []);
 
-    // Launch browser (uses Chromium for serverless)
+    // Launch browser with optimized args for Vercel
     browser = await puppeteer.launch({
-      args: chromium.args,
+      args: [
+        ...chromium.args,
+        '--disable-gpu',
+        '--disable-dev-shm-usage',
+        '--disable-setuid-sandbox',
+        '--no-first-run',
+        '--no-sandbox',
+        '--no-zygote',
+        '--single-process',
+        '--disable-extensions'
+      ],
       defaultViewport: chromium.defaultViewport,
       executablePath: await chromium.executablePath(),
       headless: chromium.headless,
+      ignoreHTTPSErrors: true,
     });
 
     const page = await browser.newPage();
