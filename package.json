@@ -1,0 +1,17 @@
+{
+  "name": "sherevo-card-generator",
+  "version": "1.0.0",
+  "description": "Serverless card generator with QR codes",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "puppeteer-core": "^21.5.2",
+    "@sparticuz/chromium": "^119.0.0",
+    "qrcode": "^1.5.3"
+  },
+  "devDependencies": {
+    "vercel": "^32.5.0"
+  }
+}
