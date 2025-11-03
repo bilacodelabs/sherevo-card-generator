@@ -1,5 +1,4 @@
-import chromium from '@sparticuz/chromium';
-import puppeteer from 'puppeteer-core';
+import playwright from 'playwright-aws-lambda';
 import QRCode from 'qrcode';
 
 // Helper to fill variables in text
@@ -144,50 +143,34 @@ export default async function handler(req, res) {
     // Generate HTML content
     const html = await generateCardHTML(cardDesign, guest, event, eventAttributes || []);
 
-    // Launch browser with optimized args for Vercel
-    browser = await puppeteer.launch({
-      args: [
-        ...chromium.args,
-        '--disable-gpu',
-        '--disable-dev-shm-usage',
-        '--disable-setuid-sandbox',
-        '--no-first-run',
-        '--no-sandbox',
-        '--no-zygote',
-        '--single-process',
-        '--disable-extensions'
-      ],
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
-      ignoreHTTPSErrors: true,
-    });
-
+    // Launch browser using playwright-aws-lambda
+    browser = await playwright.launchChromium();
     const page = await browser.newPage();
     
     // Set viewport to match card dimensions
-    await page.setViewport({
+    await page.setViewportSize({
       width: cardDesign.canvas_width,
-      height: cardDesign.canvas_height,
-      deviceScaleFactor: 2 // Higher quality
+      height: cardDesign.canvas_height
     });
 
     // Load the HTML
-    await page.setContent(html, { waitUntil: 'networkidle0' });
+    await page.setContent(html, { waitUntil: 'networkidle' });
 
     // Take screenshot
     const screenshot = await page.screenshot({
       type: 'png',
-      encoding: 'base64',
       fullPage: true
     });
 
     await browser.close();
 
+    // Convert buffer to base64
+    const base64Image = screenshot.toString('base64');
+
     // Return base64 image
     return res.status(200).json({
       success: true,
-      image: screenshot, // Base64 string without prefix
+      image: base64Image,
       guest_id: guest.id,
       guest_name: guest.name
     });
