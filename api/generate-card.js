@@ -1,4 +1,5 @@
-import playwright from 'playwright-aws-lambda';
+import chrome from 'chrome-aws-lambda';
+import puppeteer from 'puppeteer-core';
 import QRCode from 'qrcode';
 
 // Helper to fill variables in text
@@ -143,34 +144,40 @@ export default async function handler(req, res) {
     // Generate HTML content
     const html = await generateCardHTML(cardDesign, guest, event, eventAttributes || []);
 
-    // Launch browser using playwright-aws-lambda
-    browser = await playwright.launchChromium();
+    // Launch browser using chrome-aws-lambda
+    browser = await puppeteer.launch({
+      args: chrome.args,
+      defaultViewport: chrome.defaultViewport,
+      executablePath: await chrome.executablePath,
+      headless: chrome.headless,
+      ignoreHTTPSErrors: true,
+    });
+
     const page = await browser.newPage();
     
     // Set viewport to match card dimensions
-    await page.setViewportSize({
+    await page.setViewport({
       width: cardDesign.canvas_width,
-      height: cardDesign.canvas_height
+      height: cardDesign.canvas_height,
+      deviceScaleFactor: 2 // Higher quality
     });
 
     // Load the HTML
-    await page.setContent(html, { waitUntil: 'networkidle' });
+    await page.setContent(html, { waitUntil: 'networkidle0' });
 
     // Take screenshot
     const screenshot = await page.screenshot({
       type: 'png',
+      encoding: 'base64',
       fullPage: true
     });
 
     await browser.close();
 
-    // Convert buffer to base64
-    const base64Image = screenshot.toString('base64');
-
     // Return base64 image
     return res.status(200).json({
       success: true,
-      image: base64Image,
+      image: screenshot, // Base64 string without prefix
       guest_id: guest.id,
       guest_name: guest.name
     });
