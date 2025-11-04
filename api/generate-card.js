@@ -63,7 +63,7 @@ async function generateCardSVG(cardDesign, guest, event, eventAttributes = []) {
       elementsSVG += `
         <text x="${x}" y="${y}"
           font-size="${element.fontSize || 16}"
-          font-family="${element.fontFamily || 'Arial, Helvetica, sans-serif'}"
+          font-family="${element.fontFamily || 'Noto Sans, Arial, Helvetica, sans-serif'}"
           fill="${element.color || '#000000'}"
           font-weight="${fontWeight}"
           font-style="${fontStyle}"
@@ -73,8 +73,18 @@ async function generateCardSVG(cardDesign, guest, event, eventAttributes = []) {
     }
   }
 
-  const bg = cardDesign.background_image
-    ? `<image href="${cardDesign.background_image}" x="0" y="0" width="${cardDesign.canvas_width}" height="${cardDesign.canvas_height}" preserveAspectRatio="xMidYMid slice" />`
+  // If background image is a URL, fetch and embed as data URL so Resvg can render it
+  let backgroundHref = '';
+  if (cardDesign.background_image) {
+    try {
+      backgroundHref = await fetchAsDataUrl(cardDesign.background_image);
+    } catch (_) {
+      backgroundHref = '';
+    }
+  }
+
+  const bg = backgroundHref
+    ? `<image href="${backgroundHref}" x="0" y="0" width="${cardDesign.canvas_width}" height="${cardDesign.canvas_height}" preserveAspectRatio="xMidYMid slice" />`
     : `<rect x="0" y="0" width="${cardDesign.canvas_width}" height="${cardDesign.canvas_height}" fill="#ffffff" />`;
 
   return `
@@ -92,6 +102,15 @@ function escapeForXML(str = '') {
     .replace(/>/g, '&gt;')
     .replace(/\"/g, '&quot;')
     .replace(/'/g, '&apos;');
+}
+
+async function fetchAsDataUrl(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch image: ${url}`);
+  const contentType = res.headers.get('content-type') || 'image/jpeg';
+  const arrayBuf = await res.arrayBuffer();
+  const base64 = Buffer.from(arrayBuf).toString('base64');
+  return `data:${contentType};base64,${base64}`;
 }
 
 // Main serverless function handler
@@ -124,9 +143,14 @@ export default async function handler(req, res) {
 
     console.log('Generating card for guest:', guest.name);
 
-    // Generate SVG and rasterize to PNG via Resvg
+    // Generate SVG
     const svg = await generateCardSVG(cardDesign, guest, event, eventAttributes || []);
-    const resvg = new Resvg(svg, { fitTo: { mode: 'original' } });
+
+    // Load fonts so text renders in Resvg (fallback to default if fetch fails)
+    const fonts = await loadDefaultFonts();
+
+    // Rasterize SVG to PNG
+    const resvg = new Resvg(svg, { fitTo: { mode: 'original' }, fonts });
     const png = resvg.render().asPng();
     console.log('Card generated successfully');
 
@@ -150,4 +174,42 @@ export default async function handler(req, res) {
       message: error.message
     });
   }
+}
+
+async function loadDefaultFonts() {
+  // Noto Sans regular/bold/italic TTFs hosted on Google Fonts repo (raw)
+  const sources = [
+    {
+      name: 'Noto Sans',
+      url: 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/NotoSans-Regular.ttf',
+      weight: 400,
+      style: 'normal',
+    },
+    {
+      name: 'Noto Sans',
+      url: 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/NotoSans-Bold.ttf',
+      weight: 700,
+      style: 'normal',
+    },
+    {
+      name: 'Noto Sans',
+      url: 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/NotoSans-Italic.ttf',
+      weight: 400,
+      style: 'italic',
+    },
+  ];
+
+  const fonts = [];
+  for (const src of sources) {
+    try {
+      const res = await fetch(src.url);
+      if (!res.ok) continue;
+      const buf = new Uint8Array(await res.arrayBuffer());
+      fonts.push({ name: src.name, data: buf, weight: src.weight, style: src.style });
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  return { font: fonts.length ? fonts : undefined };
 }
