@@ -147,11 +147,18 @@ export default async function handler(req, res) {
     // Generate SVG
     const svg = await generateCardSVG(cardDesign, guest, event, eventAttributes || []);
 
-    // Load fonts so text renders in Resvg (fallback to default if fetch fails)
-    const fonts = await loadDefaultFonts();
+  // Load fonts so text renders in Resvg (fallback to default if fetch fails)
+  const fontFiles = await loadDefaultFonts();
 
-    // Rasterize SVG to PNG
-    const resvg = new Resvg(svg, { fitTo: { mode: 'original' }, fonts });
+  // Rasterize SVG to PNG
+  const resvg = new Resvg(svg, { 
+    fitTo: { mode: 'original' },
+    font: {
+      fontFiles,
+      loadSystemFonts: false,
+      defaultFontFamily: 'Noto Sans'
+    }
+  });
     const png = resvg.render().asPng();
     console.log('Card generated successfully');
 
@@ -212,5 +219,5 @@ async function loadDefaultFonts() {
     }
   }
 
-  return { font: fonts.length ? fonts : undefined };
+  return fonts;
 }
