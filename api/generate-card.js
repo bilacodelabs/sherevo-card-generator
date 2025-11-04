@@ -59,7 +59,7 @@ async function generateCardSVG(cardDesign, guest, event, eventAttributes = []) {
       const textDecoration = element.textDecoration || 'none';
       const textAnchor = (element.textAlign === 'center') ? 'middle' : (element.textAlign === 'right') ? 'end' : 'start';
       const x = element.x;
-      const y = element.y + (element.fontSize || 16);
+      const y = element.y; // use top-left like HTML; rely on dominant-baseline
       elementsSVG += `
         <text x="${x}" y="${y}"
           font-size="${element.fontSize || 16}"
@@ -68,7 +68,8 @@ async function generateCardSVG(cardDesign, guest, event, eventAttributes = []) {
           font-weight="${fontWeight}"
           font-style="${fontStyle}"
           text-decoration="${textDecoration}"
-          text-anchor="${textAnchor}">${text}</text>
+          text-anchor="${textAnchor}"
+          dominant-baseline="hanging">${text}</text>
       `;
     }
   }
@@ -157,7 +158,7 @@ export default async function handler(req, res) {
     // Return base64 image
     return res.status(200).json({
       success: true,
-      image: Buffer.from(png).toString('base64'),
+      image: `data:image/png;base64, ${Buffer.from(png).toString('base64')}`,
       guest_id: guest.id,
       guest_name: guest.name
     });
