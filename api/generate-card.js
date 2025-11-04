@@ -1,6 +1,7 @@
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
 import QRCode from 'qrcode';
+import path from 'path';
 
 // Helper to fill variables in text the card
 function fillCardVariables(text, guest, event, eventAttributes = []) {
@@ -146,15 +147,30 @@ export default async function handler(req, res) {
 
     // Get executable path
     const executablePath = await chromium.executablePath();
+    const chromiumDir = path.dirname(executablePath);
+
+    // Ensure shared libraries can be found (nss, etc.)
+    process.env.LD_LIBRARY_PATH = [
+      chromiumDir,
+      process.env.LD_LIBRARY_PATH || ''
+    ].filter(Boolean).join(':');
 
     console.log('Launching browser...');
 
-    // Launch browser with minimal args for better compatibility
+    // Launch browser with explicit sandbox flags and env
     browser = await puppeteer.launch({
-      args: chromium.args,
+      args: [
+        ...chromium.args,
+        '--no-sandbox',
+        '--disable-setuid-sandbox'
+      ],
       defaultViewport: chromium.defaultViewport,
       executablePath,
       headless: chromium.headless,
+      env: {
+        ...process.env,
+        LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH
+      }
     });
 
     console.log('Browser launched');
