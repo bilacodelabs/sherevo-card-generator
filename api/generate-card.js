@@ -1,4 +1,5 @@
 import chromium from '@sparticuz/chromium';
+export const config = { runtime: 'nodejs18.x' };
 import puppeteer from 'puppeteer-core';
 import QRCode from 'qrcode';
 import path from 'path';
@@ -148,10 +149,15 @@ export default async function handler(req, res) {
     // Get executable path
     const executablePath = await chromium.executablePath();
     const chromiumDir = path.dirname(executablePath);
+    const chromiumLibDir = '/var/task/node_modules/@sparticuz/chromium/lib';
+    const chromiumRootDir = '/var/task/node_modules/@sparticuz/chromium';
 
     // Ensure shared libraries can be found (nss, etc.)
     process.env.LD_LIBRARY_PATH = [
       chromiumDir,
+      path.join(chromiumDir, 'swiftshader'),
+      chromiumLibDir,
+      chromiumRootDir,
       process.env.LD_LIBRARY_PATH || ''
     ].filter(Boolean).join(':');
 
@@ -162,7 +168,10 @@ export default async function handler(req, res) {
       args: [
         ...chromium.args,
         '--no-sandbox',
-        '--disable-setuid-sandbox'
+        '--disable-setuid-sandbox',
+        '--disable-gpu',
+        '--single-process',
+        '--disable-dev-shm-usage'
       ],
       defaultViewport: chromium.defaultViewport,
       executablePath,
