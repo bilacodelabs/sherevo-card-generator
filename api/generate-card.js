@@ -1,6 +1,9 @@
 export const config = { runtime: 'nodejs' };
 import QRCode from 'qrcode';
 import { Resvg } from '@resvg/resvg-js';
+import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 
 // Helper to fill variables in text the card
 function fillCardVariables(text, guest, event, eventAttributes = []) {
@@ -148,16 +151,12 @@ export default async function handler(req, res) {
     const svg = await generateCardSVG(cardDesign, guest, event, eventAttributes || []);
 
   // Load fonts so text renders in Resvg (fallback to default if fetch fails)
-  const fontFiles = await loadDefaultFonts();
+  const fontFiles = await getFontFiles();
 
   // Rasterize SVG to PNG
   const resvg = new Resvg(svg, { 
     fitTo: { mode: 'original' },
-    font: {
-      fontFiles,
-      loadSystemFonts: false,
-      defaultFontFamily: 'Noto Sans'
-    }
+    font: { fontFiles, loadSystemFonts: false, defaultFontFamily: 'Noto Sans' }
   });
     const png = resvg.render().asPng();
     console.log('Card generated successfully');
@@ -184,40 +183,40 @@ export default async function handler(req, res) {
   }
 }
 
-async function loadDefaultFonts() {
-  // Noto Sans regular/bold/italic TTFs hosted on Google Fonts repo (raw)
-  const sources = [
-    {
-      name: 'Noto Sans',
-      url: 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/NotoSans-Regular.ttf',
-      weight: 400,
-      style: 'normal',
-    },
-    {
-      name: 'Noto Sans',
-      url: 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/NotoSans-Bold.ttf',
-      weight: 700,
-      style: 'normal',
-    },
-    {
-      name: 'Noto Sans',
-      url: 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/NotoSans-Italic.ttf',
-      weight: 400,
-      style: 'italic',
-    },
+async function getFontFiles() {
+  // Priority 1: use project-bundled fonts if present (fast, no network)
+  const projectFontsDir = path.join(process.cwd(), 'fonts');
+  const bundled = [
+    path.join(projectFontsDir, 'NotoSans-Regular.ttf'),
+    path.join(projectFontsDir, 'NotoSans-Bold.ttf'),
+    path.join(projectFontsDir, 'NotoSans-Italic.ttf'),
+  ].filter(p => existsSync(p));
+  if (bundled.length) return bundled;
+
+  // Priority 2: cache downloaded fonts in /tmp per cold start
+  const tmpDir = '/tmp/fonts';
+  try { await fs.mkdir(tmpDir, { recursive: true }); } catch {}
+  const tmpFiles = [
+    { name: 'NotoSans-Regular.ttf', url: 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/NotoSans-Regular.ttf' },
+    { name: 'NotoSans-Bold.ttf',    url: 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/NotoSans-Bold.ttf'    },
+    { name: 'NotoSans-Italic.ttf',  url: 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/NotoSans-Italic.ttf'  },
   ];
 
-  const fonts = [];
-  for (const src of sources) {
-    try {
-      const res = await fetch(src.url);
-      if (!res.ok) continue;
-      const buf = new Uint8Array(await res.arrayBuffer());
-      fonts.push({ name: src.name, data: buf, weight: src.weight, style: src.style });
-    } catch (_) {
-      // ignore
+  const outPaths = [];
+  for (const f of tmpFiles) {
+    const out = path.join(tmpDir, f.name);
+    if (!existsSync(out)) {
+      try {
+        const res = await fetch(f.url);
+        if (res.ok) {
+          const buf = Buffer.from(await res.arrayBuffer());
+          await fs.writeFile(out, buf);
+        }
+      } catch {}
     }
+    if (existsSync(out)) outPaths.push(out);
   }
 
-  return fonts;
+  // If none could be fetched, return empty to let Resvg fall back
+  return outPaths;
 }
