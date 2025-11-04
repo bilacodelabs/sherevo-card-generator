@@ -144,14 +144,31 @@ export default async function handler(req, res) {
     // Generate HTML content
     const html = await generateCardHTML(cardDesign, guest, event, eventAttributes || []);
 
-    // Launch browser using @sparticuz/chromium
+    // Configure Chromium for Vercel serverless
+    const executablePath = await chromium.executablePath();
+    
+    console.log('Launching browser with executable:', executablePath);
+
+    // Launch browser using @sparticuz/chromium with optimized settings
     browser = await puppeteer.launch({
-      args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox'],
+      args: [
+        ...chromium.args,
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu'
+      ],
       defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+      executablePath: executablePath,
+      headless: true,
       ignoreHTTPSErrors: true,
     });
+
+    console.log('Browser launched successfully');
 
     const page = await browser.newPage();
     
@@ -162,8 +179,12 @@ export default async function handler(req, res) {
       deviceScaleFactor: 2 // Higher quality
     });
 
+    console.log('Loading HTML content...');
+
     // Load the HTML
     await page.setContent(html, { waitUntil: 'networkidle0' });
+
+    console.log('Taking screenshot...');
 
     // Take screenshot
     const screenshot = await page.screenshot({
@@ -173,6 +194,7 @@ export default async function handler(req, res) {
     });
 
     await browser.close();
+    console.log('Card generated successfully');
 
     // Return base64 image
     return res.status(200).json({
@@ -184,6 +206,7 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Error generating card:', error);
+    console.error('Error stack:', error.stack);
     
     if (browser) {
       await browser.close().catch(console.error);
@@ -191,7 +214,8 @@ export default async function handler(req, res) {
 
     return res.status(500).json({
       error: 'Failed to generate card',
-      message: error.message
+      message: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }
