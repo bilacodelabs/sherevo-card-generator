@@ -172,7 +172,7 @@ export default async function handler(req, res) {
 
     const page = await browser.newPage();
     
-    // Set viewport to match card dimensionss
+    // Set viewport to match card dimensionsssssssss
     await page.setViewport({
       width: cardDesign.canvas_width,
       height: cardDesign.canvas_height,
