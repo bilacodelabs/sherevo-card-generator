@@ -2,7 +2,7 @@ import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
 import QRCode from 'qrcode';
 
-// Helper to fill variables in text
+// Helper to fill variables in text the card
 function fillCardVariables(text, guest, event, eventAttributes = []) {
   const cardTypeValue = guest.card_type || '';
   
