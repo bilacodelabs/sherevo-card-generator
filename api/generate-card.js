@@ -1,8 +1,6 @@
-import chromium from '@sparticuz/chromium';
 export const config = { runtime: 'nodejs18.x' };
-import puppeteer from 'puppeteer-core';
 import QRCode from 'qrcode';
-import path from 'path';
+import { Resvg } from '@resvg/resvg-js';
 
 // Helper to fill variables in text the card
 function fillCardVariables(text, guest, event, eventAttributes = []) {
@@ -27,8 +25,8 @@ function fillCardVariables(text, guest, event, eventAttributes = []) {
   return filledText;
 }
 
-// Generate HTML for the card
-async function generateCardHTML(cardDesign, guest, event, eventAttributes = []) {
+// Generate SVG for the card
+async function generateCardSVG(cardDesign, guest, event, eventAttributes = []) {
   // Generate QR code data URLs for all QR elements
   const qrCodes = {};
   for (const element of cardDesign.text_elements) {
@@ -45,70 +43,55 @@ async function generateCardHTML(cardDesign, guest, event, eventAttributes = []) 
     }
   }
 
-  // Build HTML with inline styles
-  let elementsHTML = '';
+  // Build SVG with positioned elements
+  let elementsSVG = '';
   for (const element of cardDesign.text_elements) {
     if (element.type === 'qr_code') {
       const qrSize = element.width || 100;
       const qrDataUrl = qrCodes[element.x + '_' + element.y];
-      elementsHTML += `
-        <img 
-          src="${qrDataUrl}" 
-          style="position: absolute; left: ${element.x}px; top: ${element.y}px; width: ${qrSize}px; height: ${qrSize}px;"
-        />
+      elementsSVG += `
+        <image href="${qrDataUrl}" x="${element.x}" y="${element.y}" width="${qrSize}" height="${qrSize}" />
       `;
     } else {
-      const text = fillCardVariables(element.text, guest, event, eventAttributes);
+      const text = escapeForXML(fillCardVariables(element.text, guest, event, eventAttributes));
       const fontWeight = element.fontWeight || 'normal';
       const fontStyle = element.fontStyle || 'normal';
       const textDecoration = element.textDecoration || 'none';
-      const textAlign = element.textAlign || 'left';
-      
-      elementsHTML += `
-        <div style="
-          position: absolute; 
-          left: ${element.x}px; 
-          top: ${element.y}px; 
-          font-size: ${element.fontSize}px; 
-          font-family: ${element.fontFamily || 'Arial'}; 
-          color: ${element.color || '#000000'};
-          font-weight: ${fontWeight};
-          font-style: ${fontStyle};
-          text-decoration: ${textDecoration};
-          text-align: ${textAlign};
-          white-space: pre-wrap;
-        ">${text}</div>
+      const textAnchor = (element.textAlign === 'center') ? 'middle' : (element.textAlign === 'right') ? 'end' : 'start';
+      const x = element.x;
+      const y = element.y + (element.fontSize || 16);
+      elementsSVG += `
+        <text x="${x}" y="${y}"
+          font-size="${element.fontSize || 16}"
+          font-family="${element.fontFamily || 'Arial, Helvetica, sans-serif'}"
+          fill="${element.color || '#000000'}"
+          font-weight="${fontWeight}"
+          font-style="${fontStyle}"
+          text-decoration="${textDecoration}"
+          text-anchor="${textAnchor}">${text}</text>
       `;
     }
   }
 
-  const backgroundStyle = cardDesign.background_image 
-    ? `background-image: url('${cardDesign.background_image}'); background-size: cover; background-position: center;`
-    : 'background-color: #ffffff;';
+  const bg = cardDesign.background_image
+    ? `<image href="${cardDesign.background_image}" x="0" y="0" width="${cardDesign.canvas_width}" height="${cardDesign.canvas_height}" preserveAspectRatio="xMidYMid slice" />`
+    : `<rect x="0" y="0" width="${cardDesign.canvas_width}" height="${cardDesign.canvas_height}" fill="#ffffff" />`;
 
   return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { margin: 0; padding: 0; }
-      </style>
-    </head>
-    <body>
-      <div style="
-        width: ${cardDesign.canvas_width}px; 
-        height: ${cardDesign.canvas_height}px; 
-        position: relative;
-        ${backgroundStyle}
-        overflow: hidden;
-      ">
-        ${elementsHTML}
-      </div>
-    </body>
-    </html>
+    <svg xmlns="http://www.w3.org/2000/svg" width="${cardDesign.canvas_width}" height="${cardDesign.canvas_height}" viewBox="0 0 ${cardDesign.canvas_width} ${cardDesign.canvas_height}">
+      ${bg}
+      ${elementsSVG}
+    </svg>
   `;
+}
+
+function escapeForXML(str = '') {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }
 
 // Main serverless function handler
@@ -128,8 +111,6 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
 
-  let browser;
-  
   try {
     const { cardDesign, guest, event, eventAttributes } = req.body;
 
@@ -143,81 +124,16 @@ export default async function handler(req, res) {
 
     console.log('Generating card for guest:', guest.name);
 
-    // Generate HTML content
-    const html = await generateCardHTML(cardDesign, guest, event, eventAttributes || []);
-
-    // Get executable path
-    const executablePath = await chromium.executablePath();
-    const chromiumDir = path.dirname(executablePath);
-    const chromiumLibDir = '/var/task/node_modules/@sparticuz/chromium/lib';
-    const chromiumRootDir = '/var/task/node_modules/@sparticuz/chromium';
-
-    // Ensure shared libraries can be found (nss, etc.)
-    process.env.LD_LIBRARY_PATH = [
-      chromiumDir,
-      path.join(chromiumDir, 'swiftshader'),
-      chromiumLibDir,
-      chromiumRootDir,
-      process.env.LD_LIBRARY_PATH || ''
-    ].filter(Boolean).join(':');
-
-    console.log('Launching browser...');
-
-    // Launch browser with explicit sandbox flags and env
-    browser = await puppeteer.launch({
-      args: [
-        ...chromium.args,
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-gpu',
-        '--single-process',
-        '--disable-dev-shm-usage'
-      ],
-      defaultViewport: chromium.defaultViewport,
-      executablePath,
-      headless: chromium.headless,
-      env: {
-        ...process.env,
-        LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH
-      }
-    });
-
-    console.log('Browser launched');
-
-    const page = await browser.newPage();
-    
-    // Set viewport to match card dimensions
-    await page.setViewport({
-      width: cardDesign.canvas_width,
-      height: cardDesign.canvas_height,
-      deviceScaleFactor: 2
-    });
-
-    console.log('Loading content...');
-
-    // Load the HTML with a timeout
-    await page.setContent(html, { 
-      waitUntil: 'networkidle0',
-      timeout: 30000
-    });
-
-    console.log('Taking screenshot...');
-
-    // Take screenshot
-    const screenshot = await page.screenshot({
-      type: 'png',
-      encoding: 'base64',
-      fullPage: false
-    });
-
-    await browser.close();
-
+    // Generate SVG and rasterize to PNG via Resvg
+    const svg = await generateCardSVG(cardDesign, guest, event, eventAttributes || []);
+    const resvg = new Resvg(svg, { fitTo: { mode: 'original' } });
+    const png = resvg.render().asPng();
     console.log('Card generated successfully');
 
     // Return base64 image
     return res.status(200).json({
       success: true,
-      image: screenshot,
+      image: Buffer.from(png).toString('base64'),
       guest_id: guest.id,
       guest_name: guest.name
     });
@@ -229,14 +145,6 @@ export default async function handler(req, res) {
       stack: error.stack
     });
     
-    if (browser) {
-      try {
-        await browser.close();
-      } catch (closeError) {
-        console.error('Error closing browser:', closeError);
-      }
-    }
-
     return res.status(500).json({
       error: 'Failed to generate card',
       message: error.message

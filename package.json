@@ -7,8 +7,7 @@
     "dev": "vercel dev"
   },
   "dependencies": {
-    "@sparticuz/chromium": "^129.0.0",
-    "puppeteer-core": "^23.7.0",
+    "@resvg/resvg-js": "^2.6.2",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
