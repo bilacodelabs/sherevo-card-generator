@@ -1,4 +1,4 @@
-import chrome from 'chrome-aws-lambda';
+import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
 import QRCode from 'qrcode';
 
@@ -144,12 +144,12 @@ export default async function handler(req, res) {
     // Generate HTML content
     const html = await generateCardHTML(cardDesign, guest, event, eventAttributes || []);
 
-    // Launch browser using chrome-aws-lambda
+    // Launch browser using @sparticuz/chromium
     browser = await puppeteer.launch({
-      args: chrome.args,
-      defaultViewport: chrome.defaultViewport,
-      executablePath: await chrome.executablePath,
-      headless: chrome.headless,
+      args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox'],
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
       ignoreHTTPSErrors: true,
     });
 

@@ -7,9 +7,9 @@
     "dev": "vercel dev"
   },
   "dependencies": {
-    "chrome-aws-lambda": "^10.1.0",
-    "puppeteer-core": "^10.4.0",
-    "qrcode": "^1.5.3"
+    "puppeteer-core": "^21.11.0",
+    "@sparticuz/chromium": "^119.0.2",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "vercel": "^32.5.0"
